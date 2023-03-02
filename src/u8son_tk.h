@@ -64,3 +64,13 @@ u8son_next_tok(u8son_tok_t* tok){
 }
 
 
+typedef struct u8son_delim_as_string_t{
+  char d[2];
+}u8son_delim_as_string_t;
+
+static u8son_delim_as_string_t
+u8son_tok_delim_as_string(u8son_tok_t* tok){
+  u8son_delim_as_string_t buf = {{tok->delim}};
+  return buf;
+}
+

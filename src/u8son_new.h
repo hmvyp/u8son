@@ -34,7 +34,6 @@ typedef union u8son_key_t {
 } u8son_key_t;
 
 typedef struct u8son_current_item_t {
-  //int level;
   u8son_key_t key; // string or number depending on parent_type
   u8son_type_t type; // string, object or array
   int cur_child_index;
@@ -71,11 +70,13 @@ extern "C" {
 #endif
 //................................................................. private functions
 
-
-static int u8son_reterror(u8son_parser_t* p, char* static_errstr, char* var_errstr){
-  printf("\n Pos: %d Err: %s", p->tok.next_pos, static_errstr);
-  return -1;
+static void
+u8son_clear_item_except_key(u8son_current_item_t* it){
+  u8son_current_item_t tmp = {};
+  tmp.key = it->key;
+  *it = tmp;
 }
+
 
 static u8son_current_item_t*
 u8son_get_current(u8son_parser_t* p){
@@ -93,11 +94,23 @@ u8son_get_parent(u8son_parser_t* p){
   }
 }
 
-static u8son_type_t
-u8son_get_parent_type(u8son_parser_t* p){
-  u8son_current_item_t* par =  u8son_get_parent(p);
-  return (par == NULL)? u8son_above_root : par->type;
+
+static int u8son_reterror(u8son_parser_t* p, char* static_errstr, char* var_errstr){
+  p->error.static_text = static_errstr;
+  if(strlen(var_errstr) < sizeof(p->error.var_text)){
+    strcpy(p->error.var_text, var_errstr);
+  }
+  p->error.pos = p->tok.next_pos;
+  u8son_get_current(p)->parsing_status = u8son_error;
+  printf("\n Pos: %d Err: %s %s", p->tok.next_pos, static_errstr, var_errstr);
+  return u8son_error;
 }
+
+
+static int u8son_rettokerror(u8son_parser_t* p){
+  return u8son_reterror(p, p->tok.static_errstring, "");
+}
+
 
 static int
 u8son_parse_value(u8son_parser_t* p){
@@ -105,11 +118,7 @@ u8son_parse_value(u8son_parser_t* p){
 
   u8son_current_item_t* im = u8son_get_current(p);
 
-  /*
-  if(u8son_next_tok(tok) < 0){
-    return u8son_reterror(p, tok->static_errstring, "");
-  };
-  */
+  u8son_clear_item_except_key(im);
 
   if(tok->toktype == u8son_tok_delim){
     int odelim = tok->delim;
@@ -129,7 +138,7 @@ u8son_parse_value(u8son_parser_t* p){
   }
 
   if(u8son_next_tok(tok) < 0){
-    return u8son_reterror(p, tok->static_errstring, "");
+    return u8son_rettokerror(p);
   };
 
   return 1;
@@ -157,18 +166,12 @@ u8son_parse_next(u8son_parser_t* p){
   case u8son_data:
   case u8son_leave_container:
   {
-     /*
-      if(u8son_next_tok(tok) <1){
-        return u8son_reterror(p, tok->static_errstring, "");
-      }
-      */
-
       if(tok->toktype == u8son_tok_delim){ // then should be comma or closing bracket
         const char d = tok->delim;
         if(d == ','){
           // nothing to do, proceed parsing next element of array or object
           if(u8son_next_tok(tok) <1){ // read ahead
-            return u8son_reterror(p, tok->static_errstring, "");
+            return u8son_rettokerror(p);
           }
 
         }else if((d == '}' && par->type == u8son_object) || (d == ']' && par->type == u8son_array)){
@@ -178,7 +181,7 @@ u8son_parse_next(u8son_parser_t* p){
           im->parsing_status = u8son_leave_container;
 
           if(u8son_next_tok(tok) <1){ // read ahead
-            return u8son_reterror(p, tok->static_errstring, "");
+            return u8son_rettokerror(p);
           }
           return 1;
         }else{
@@ -190,13 +193,9 @@ u8son_parse_next(u8son_parser_t* p){
       }
 
       if(par->type == u8son_object) { // if parent is an object then parse the key
-        /*
-        if(u8son_next_tok(tok) <1){
-          return u8son_reterror(p, tok->static_errstring, "");
-        }
-        */
         if(tok->toktype != u8son_tok_string){
-          return u8son_reterror(p, "Key string expected ", "");
+
+          return u8son_reterror(p, "Key string expected. Found delimiter: ", u8son_tok_delim_as_string(&p->tok).d);
         }
 
         im->key.skey = tok->str; // store the key in the element structure
@@ -206,7 +205,7 @@ u8son_parse_next(u8son_parser_t* p){
         }
         //
         if(u8son_next_tok(tok) <1){ // read ahead (value)
-          return u8son_reterror(p, tok->static_errstring, "");
+          return u8son_rettokerror(p);
         }
 
       }else{ // if parent is array
@@ -240,6 +239,21 @@ u8son_init(u8son_parser_t* p, char* src, int src_limit){
   u8son_tok_init( &pa.tok, src, src_limit);
   *p = pa;
 
+}
+
+static int
+u8son_next(u8son_parser_t* p){
+  if(p->current_level == 0 && u8son_get_current(p)->parsing_status == 0){
+    // if first call:
+    int tres = u8son_next_tok(&p->tok); // one token shall be always read ahead
+    if(tres < 0){
+      return u8son_rettokerror(p);
+    }
+    return u8son_parse_value(p); //start parsing root object
+
+  }else{
+    return u8son_parse_next(p);
+  }
 }
 
 
