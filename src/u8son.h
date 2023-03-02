@@ -17,17 +17,29 @@ typedef enum u8son_type_t {
   u8son_string
 } u8son_type_t;
 
+typedef enum u8son_parse_event_type_t{
+  u8son_error = -1,
+  // zero means uninitialized event
+  u8son_data = 1,
+  u8son_enter_container,
+  u8son_leave_container,
+  u8son_end
+} u8son_parse_event_type_t;
+
+
+
 typedef union u8son_key_t {
-    unsigned char* skey; // key for object field
+    char* skey; // key for object field
     int nkey; // index for array element
 } u8son_key_t;
 
 typedef struct u8son_current_item_t {
-  //int level;
   u8son_key_t key; // string or number depending on parent_type
   u8son_type_t type; // string, object or array
-  int cur_child_index; // for arrays only
-  unsigned char* string_data; // only for u8son_string type
+  int cur_child_index;
+  char* string_data; // only for u8son_string type
+
+  u8son_parse_event_type_t parsing_status;
   void* user; // to associate the item with some user object
 } u8son_current_item_t;
 
@@ -38,35 +50,16 @@ typedef struct u8son_path_t {
 
 typedef struct u8son_error_t {
   int pos; // in source
-  unsigned char* static_text;
+  char* static_text;
   char var_text[u8son_MAX_DYN_ERROR];
 } u8son_error_t;
 
-typedef enum u8son_parse_event_type_t{
-  u8son_error = -1,
-  // zero means uninitialized event
-  u8son_data = 1,
-  u8son_enter_container,
-  u8son_leave_container,
-  u8son_end
-} u8son_parse_event_type_t;
-
-typedef struct u8son_parse_event_t{
-  u8son_parse_event_type_t event;
-  int current_level;
-  u8son_current_item_t* path; // path[current_level] points to current element
-  u8son_error_t* error;
-} u8son_parse_event_t;
-
-
 typedef struct u8son_parser_t{
-  unsigned char* src;
-  int src_len;
-  int pos; // in src
+  u8son_tok_t tok;
 
+  int current_level;
   u8son_current_item_t path[u8son_MAX_LEVELS];
 
-  u8son_parse_event_t cur_event;
   u8son_error_t error;
 }u8son_parser_t;
 
@@ -77,49 +70,23 @@ extern "C" {
 #endif
 //................................................................. private functions
 
-/*
-static int
-u8son_delim(u8son_parser_t* p, unsigned char* delim_set){
-  unsigned char* cur = & p->src[p->pos];
-  if(
-      p->pos < p->src_len - 1
-      && cur[0] == '\0'
-      && strchr(delim_set, cur[1] != NULL)
-  ){
-    p->pos += 2;
-    return cur[1];
-  }else{
-    p->error->static_text = "Expected delimeter prefixed with NUL character";
-    strcpy(p->error->var_text, "Delimiter expected: ");
-    strcat(p->error->var_text, delim_set);
-    p->error->pos = p->pos;
-    p->cur_event.event = u8son_error;
-    return -1;
-  }
+static void
+u8son_clear_item_except_key(u8son_current_item_t* it){
+  u8son_current_item_t tmp = {};
+  tmp.key = it->key;
+  *it = tmp;
 }
 
-static int // bool
-u8son_need_space(u8son_parser_t* p, int n, unsigned char* static_err){
-  if(p->pos > p->src_len - n){
-    p->error.static_text = "Unexpected end of u8son data";
-    p->error.pos = p->pos;
-    p->cur_event.event = u8son_error;
-    return 0;
-  }else{
-    return 1;
-  }
-}
-*/
 
 static u8son_current_item_t*
 u8son_get_current(u8son_parser_t* p){
-  int lev = p->cur_event.current_level;
+  int lev = p->current_level;
   return &p->path[lev];
 }
 
 static u8son_current_item_t*
 u8son_get_parent(u8son_parser_t* p){
-  int lev = p->cur_event.current_level;
+  int lev = p->current_level;
   if(lev == 0){
     return NULL;
   }else{
@@ -127,135 +94,175 @@ u8son_get_parent(u8son_parser_t* p){
   }
 }
 
-static u8son_type_t
-u8son_get_parent_type(u8son_parser_t* p){
-  u8son_current_item_t* par =  u8son_get_parent(p);
-  return (par == NULL)? u8son_above_root : par->type;
+
+static int u8son_reterror(u8son_parser_t* p, char* static_errstr, char* var_errstr){
+  p->error.static_text = static_errstr;
+  if(strlen(var_errstr) < sizeof(p->error.var_text)){
+    strcpy(p->error.var_text, var_errstr);
+  }
+  p->error.pos = p->tok.next_pos;
+  u8son_get_current(p)->parsing_status = u8son_error;
+  // printf("\n Pos: %d Err: %s %s", p->tok.next_pos, static_errstr, var_errstr);
+  return u8son_error;
 }
 
-static u8son_parse_event_t*
+
+static int u8son_rettokerror(u8son_parser_t* p){
+  return u8son_reterror(p, p->tok.static_errstring, "");
+}
+
+
+static int
 u8son_parse_value(u8son_parser_t* p){
+  u8son_tok_t* tok = & p->tok;
+
   u8son_current_item_t* im = u8son_get_current(p);
-  u8son_type_t  ptyp = u8son_get_parent_type(p);
-  char* expected_delims = ((ptyp == u8son_object)? ",}" : ",]");
 
-  int pos = p->pos;
-  if(u8sonneed_space(p, 2)) {
-    return &p->cur_event;
+  u8son_clear_item_except_key(im);
+
+  if(tok->toktype == u8son_tok_delim){
+    int odelim = tok->delim;
+    if(odelim =='{'){
+      im->type = u8son_object;
+    }else if(odelim =='['){//  '['
+      im->type = u8son_array;
+    }else{
+      return u8son_reterror(p, "Invalid delimiter: { or [ expected", "");
+    }
+
+    im->parsing_status = u8son_enter_container;
+    im->cur_child_index = 0;
+  }else{ //string
+    im->parsing_status = u8son_data;
+    im->string_data = tok->str;
   }
 
+  if(u8son_next_tok(tok) < 0){ // read ahead (expecting delimiter after value)
+    return u8son_rettokerror(p);
+  };
 
-  if(p->src[pos] == '\0'){ // empty string or opening delimiter
-    if(p->src[pos+1] == '\0'){ // empty string
-      im->type = u8son_string;
-      im->string_data = p->src + pos;
-      p->cur_event.event = u8son_data;
-      ++pos;
-    }else{ // not an empty string; opening delimiter expected
-      int odelim = u8son_delim(p, "{[");
-      if(odelim < 0){ // syntax error
-        return &p->cur_event;
-      }
+  return im->parsing_status;
 
-      if(odelim =='{'){
-        im->type = u8son_object;
-      }else{//  '['
-        im->type = u8son_array;
-      }
+}
 
-      p->cur_event.event = u8son_enter_container;
-      return &p->cur_event.event;
-    }
-  }else{ // nonempty string;
-    unsigned char sdata = p->src + pos;
-    im->type = u8son_string;
-    im->string_data = sdata;
-    p->cur_event.event = u8son_data;
+static int
+u8son_parse_next(u8son_parser_t* p){
+  u8son_tok_t* tok = & p->tok;
 
-    p->pos += strlen(sdata);
+  u8son_current_item_t* im = u8son_get_current(p);
+  u8son_current_item_t* par = u8son_get_parent(p);
 
-    return &p->cur_event.event;
-    /*
-
-    { // delimiter expected (comma or closing)
-      int delim = u8son_delim(p, expected_delims);
-      if(delim < 0){ // syntax error
-        return &p->cur_event;
-      }
-    }
-    */
+  if(im->parsing_status == u8son_leave_container && p->current_level == 0){
+    im->parsing_status = u8son_end;
+    return im->parsing_status;
   }
+
+  switch(im->parsing_status){
+  case u8son_enter_container:
+    if(p->current_level >= u8son_MAX_LEVELS - 1){
+      return u8son_reterror(p, "Maximum object depth exceeded", "");
+    }
+
+    ++(p->current_level);
+    im = u8son_get_current(p); // new parent
+    par = u8son_get_parent(p);
+    // no break, pass through:
+  case u8son_data:
+  case u8son_leave_container:
+  {
+      if(tok->toktype == u8son_tok_delim){ // then should be comma or closing bracket
+        const char d = tok->delim;
+        if(d == ','){
+          // nothing to do, proceed with next element of array or object
+          if(u8son_next_tok(tok) < 1){ // read ahead
+            return u8son_rettokerror(p);
+          }
+        }else if((d == '}' && par->type == u8son_object) || (d == ']' && par->type == u8son_array)){
+          // if closing bracket encountered...
+          if(p->current_level <= 0){
+            return u8son_reterror(p, "Internal parser error (jumping above root)", "");
+          }
+          --(p->current_level);
+          im = u8son_get_current(p);
+          im->parsing_status = u8son_leave_container;
+
+          if(u8son_next_tok(tok) <1){ // read ahead
+            return u8son_rettokerror(p);
+          }
+          return 1;
+        }else{
+          return u8son_reterror(p, "Invalid delimiter found: ", u8son_tok_delim_as_string(tok).d);
+        }
+
+      }else if(par->cur_child_index != 0 ){
+        return u8son_reterror(p, "Delimiter expected ", "");
+      }
+
+      if(par->type == u8son_object) { // if parent is an object then parse the key
+        if(tok->toktype != u8son_tok_string){
+
+          return u8son_reterror(p, "Key string expected. Found delimiter: ", u8son_tok_delim_as_string(&p->tok).d);
+        }
+
+        im->key.skey = tok->str; // store the key in the element structure
+
+        if(!(u8son_next_tok(tok) > 0 && tok->toktype == u8son_tok_delim  && tok->delim == ':')){
+          return u8son_reterror(p, ": expected here", "");
+        }
+        //
+        if(u8son_next_tok(tok) <1){ // read ahead (value)
+          return u8son_rettokerror(p);
+        }
+
+      }else{ // if parent is array
+          im->key.nkey = par->cur_child_index; // just store the index in the element structure
+      }
+
+      if(par != NULL){
+        ++(par->cur_child_index);
+      }
+
+      return u8son_parse_value(p); // parse object or array element value
+  }
+  case u8son_end:
+      return u8son_end;
+  case u8son_error:
+      return u8son_error;
+ // default:
+    //return u8son_end;
+
+
+  }
+
+  return -1000; //impossible?
 }
 
 //............................................................... interface functions:
 
 static void
-u8son_init(u8son_parser_t* p, unsigned char* src, int src_len){
-  u8son_parser_t pa = {src, src_len};
+u8son_init(u8son_parser_t* p, char* src, int src_limit){
+  u8son_parser_t pa = {};
+  u8son_tok_init( &pa.tok, src, src_limit);
   *p = pa;
-  p->cur_event.path = p->path;
+
 }
 
-static u8son_parse_event_t*
-u8son_parse_next(u8son_parser_t* p){
-  if(p->cur_event.event == 0){ // if first time invocation
-    if(p->src_len == 0){
-      p->cur_event->event = u8son_end;
-      return &p->cur_event;
+static int
+u8son_next(u8son_parser_t* p){
+  if(p->current_level == 0 && u8son_get_current(p)->parsing_status == 0){
+    // if first call, try to parse root object
+    int tres = u8son_next_tok(&p->tok); // one token shall be always read ahead
+    if(tres < 0){
+      return u8son_rettokerror(p);
+    }else if(p->tok.toktype == u8son_tok_eof){
+      return u8son_end;
+    }else if(p->tok.toktype != u8son_tok_delim){  // the root must object or array (not string)
+      return u8son_reterror(p, "Delimiter { or [ expected ", "");
     }
-
-    int dm = u8son_delim( p, "{[");
-    if(dm < 0){
-      return &p->cur_event; // error
-    }
-
-    p->cur_event.event = u8son_enter_container;
-    {
-      u8son_current_item_t* im = u8son_get_current(p);
-      im->type = (dm == '{' )? u8son_object=1 : u8son_array;
-      p->pos += 2;
-      return &p->cur_event;
-    }
+    return u8son_parse_value(p); // start parsing root object
   }else{
-    u8son_parse_event_type_t prev_ev = p->cur_event.event;
-
-    switch(prev_ev){
-      u8son_enter_container:
-        ++(p->cur_event.current_level); // ToDo: check bounds !!! duck!!!!
-        break;
-      u8son_leave_container:
-        // --(p->cur_event.current_level); // ToDo: check bounds !!! duck!!!!
-        break;
-      default:
-    }
-
-    {
-      u8son_current_item_t* im = u8son_get_current(p);
-      u8son_current_item_t*  pim =  u8son_get_parent(p);
-
-      if(pim->type == u8son_object){
-         char* key = p->src + p->pos;
-
-         // duck!!! check bounds!!!
-         p->pos += strlen(key) + ((key == '\0')? 1 : 0); // skip empty string if key is empty
-         int colon =  u8son_delim( p, ":");
-         if(colon < 0){
-           return &p->cur_event; // error
-         }
-
-         im->key.skey = key;
-
-      }else{ // array
-           im->key.nkey = (pim->cur_child_index) ++;
-      }
-
-      // common for objects and arrays:
-
-      return u8son_parse_value(p);
-    }
+    return u8son_parse_next(p);
   }
-
-
 }
 
 

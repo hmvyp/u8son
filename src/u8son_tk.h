@@ -1,3 +1,9 @@
+/*
+ *
+ * u8son tokenizer
+ */
+
+
 typedef enum u8son_tok_type_t{
   u8son_tok_invalid = -1,
   u8son_tok_string=1,
@@ -56,6 +62,9 @@ u8son_next_tok(u8son_tok_t* tok){
     }
   }else{ // nonempty string case
     char* s = tok->alldata + tok->next_pos;
+    if(memchr(s, 0, tok->limit - tok->next_pos) == NULL){ // try to find terminating 0
+      return u8son_tok_error(tok, "String extends beyond the data buffer");
+    }
     tok->toktype = u8son_tok_string;
     tok->str = s;
     tok->next_pos += strlen(s); // point to terminating '\0' (assuming buffer ends with '\0'!!!)
