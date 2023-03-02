@@ -1,0 +1,38 @@
+The idea of JSON-like format for structured data.
+
+The format is intended for use in machine-to-machine communication. Although it is human-readable, it is not (easy) human-editable.
+
+Restrictions (compared to JSON):
+
+1) Only string values, no numbers, null, etc.
+2) Strings (keys and values) shall not include NUL character (with code 0x00) 
+
+Structurally, the proposed format is similar to JSON, with the same set of delimetrs 
+
+{}[],:
+
+and the same meaning of those delimeters. 
+
+The differences are listed below.
+
+A) Only string values are allowed.
+
+B) Strings (keys and values) are represented in utf-8 as is, without quotation marks or escapes. All utf-8 code points are allowed in strings except of NULL symbol (0x00).
+
+C) Any space symbols outside strings (i.e spaces, tabs, newlines, etc, that may be inserted into JSON to improve readability) are prohibited.
+
+D) Each delimeter {}[],: is prefixed with NUL character (0x00). 
+
+E) Empty string is represented  as NUL character, so two adjacent NUL characters always represent empty string ("") followed by some delimeter (since any string in JSON is always bounded by some delimeter and any delimeter is always prefixed with NUL)
+
+
+Rationale.
+----------
+
+Very simple processing, especially in C/C++ (all strings are already represented as null-terminated plain C/C++ strings) 
+
+NUL character is extremely rare used in strings (string with NUL character can not even be represented as plain C/C++ string) 
+
+JSON non-string data types are (somewhat) useful only in javascript programs and, generally, are rather error-prone than helpful. So the restriction on value types (strings only) seems reasonable.
+
+
