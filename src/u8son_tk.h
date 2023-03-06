@@ -48,6 +48,7 @@ u8son_next_tok(u8son_tok_t* tok){
 
   if(tok->next_pos > tok->limit - 2) {
     return u8son_tok_error(tok, "unexpected end of data (at least 2 characters expected here)");
+    // (because valid source always ends with delimiter that occupies 2 bytes)
   }
   char c0 = tok->alldata[tok->next_pos];
   char c1 = tok->alldata[tok->next_pos +1];

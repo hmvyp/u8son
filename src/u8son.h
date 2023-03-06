@@ -134,6 +134,7 @@ u8son_parse_value(u8son_parser_t* p){
     im->cur_child_index = 0;
   }else{ //string
     im->parsing_status = u8son_data;
+    im->type = u8son_string;
     im->string_data = tok->str;
   }
 
@@ -186,10 +187,10 @@ u8son_parse_next(u8son_parser_t* p){
           im = u8son_get_current(p);
           im->parsing_status = u8son_leave_container;
 
-          if(u8son_next_tok(tok) <1){ // read ahead
+          if(u8son_next_tok(tok) <1){ // read ahead (note, u8son_tok_eof is not an error)
             return u8son_rettokerror(p);
           }
-          return 1;
+          return im->parsing_status; // == u8son_leave_container
         }else{
           return u8son_reterror(p, "Invalid delimiter found: ", u8son_tok_delim_as_string(tok).d);
         }
@@ -234,7 +235,7 @@ u8son_parse_next(u8son_parser_t* p){
 
   }
 
-  return -1000; //impossible?
+  return -1000; //impossible? (calm gcc)
 }
 
 //............................................................... interface functions:
@@ -256,7 +257,7 @@ u8son_next(u8son_parser_t* p){
       return u8son_rettokerror(p);
     }else if(p->tok.toktype == u8son_tok_eof){
       return u8son_end;
-    }else if(p->tok.toktype != u8son_tok_delim){  // the root must object or array (not string)
+    }else if(p->tok.toktype != u8son_tok_delim){  // the root must be object or array (not string)
       return u8son_reterror(p, "Delimiter { or [ expected ", "");
     }
     return u8son_parse_value(p); // start parsing root object
