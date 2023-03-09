@@ -8,8 +8,13 @@ void printerror(u8son_parser_t* p){
   printf("\n Pos: %d Error: %s %s", p->error.pos,  p->error.static_text,  p->error.var_text);
 }
 
-// char s[] = "\0{a\0:AAA\0,b\0:BBB\0}";
-char s[] =
+typedef struct test_t{
+  char* test_name;
+  char* input;
+  int len;
+}test_t;
+
+char COMPLEX[] =
     "\0{"
       "a\0:AAA\0,"
       "obj\0:\0{x\0:123\0}\0,"
@@ -19,7 +24,20 @@ char s[] =
       "my_empty_string\0:\0\0,"
       "MyArrayWithEmptyString\0:\0[\0\0]"
     "\0}"; //
-int len = sizeof(s)-1;
+
+char EMPTY_ARRAY[] = {"\0[\0]"};
+char EMPTY_OBJECT[] = {"\0{\0}"};
+char EMPTY_INPUT[] = {""};
+
+#define ONE_TEST(testname) {#testname, testname, sizeof(testname) - 1}
+
+test_t all_tests[] = {
+    ONE_TEST(COMPLEX),
+    ONE_TEST(EMPTY_ARRAY),
+    ONE_TEST(EMPTY_OBJECT),
+    ONE_TEST(EMPTY_INPUT)
+};
+
 
 typedef struct strbuf_t {
   char s[32];
@@ -32,7 +50,9 @@ int2strbuf(int k){
   return buf;
 }
 
-char* print_item_value(u8son_current_item_t* im, int last_in_the_path){
+
+static char*
+print_item_value(u8son_current_item_t* im, int last_in_the_path){
   if(im->type == u8son_string){
     return im->string_data;
   }
@@ -53,15 +73,16 @@ char* print_item_value(u8son_current_item_t* im, int last_in_the_path){
 }
 
 
-int main(void) {
+int
+test_one(char* test_name, char* s, int len) {
   u8son_parser_t pa;
   u8son_init(&pa, s, len);
 
   for(int i=0; i< 100; ++i){
     int res = u8son_next(&pa);
-    if(res <0){
+    if(res < 0){
       printerror(&pa);
-      break;
+      return -1;
     }
 
     printf("\n");
@@ -70,7 +91,6 @@ int main(void) {
       printf("--eof--");
       break;
     }
-
 
     for(int i=0; i <= pa.current_level; ++i){
       u8son_current_item_t* im = pa.path + i;
@@ -88,15 +108,44 @@ int main(void) {
 }
 
 
+int
+test_all(test_t* all_tests, int ntests){
+  int i;
+  int some_err = 0;
+  for(i = 0; i< ntests; ++i){
+    test_t* ts = &all_tests[i];
+    printf("\n --------- Starting test %s  input length: %d -------", ts->test_name, ts->len);
+    int res = test_one(ts->test_name, ts->input, ts->len);
+    some_err = some_err || !!res;
+    if(res != 0){
+      printf("\n test %s FAILED \n", ts->test_name);
+      // return res;
+    }
+    printf("\n test %s passed \n", ts->test_name);
+  }
+
+  if(some_err){
+    printf("\n *** Some tests FAILED ***\n");
+  }else{
+    printf("\n ... all tests passed\n");
+  }
+
+  return 0;
+}
+
+
+int
+main(){
+  return test_all(all_tests, sizeof(all_tests)/sizeof(all_tests[0]));
+}
+
 /*
+What to do with empty input? Ok, (all zeroes in the level struct)
+
 ToDo:
 
-What to do with empty input?
 functions to access current level, path elements and error struct
-run a set of tests at once
 stringify test result and compare with test source (test automation)
-test error handling
-
 test folder and compile guards...
 
  */
