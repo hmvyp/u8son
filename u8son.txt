@@ -1,25 +1,25 @@
-The idea of JSON-like format for structured data.
+u8son: super simple JSON-like format for structured data.
 
-The format is intended for use in machine-to-machine communication. Although it is human-readable, it is not (easy) human-editable.
+The format is intended for use in machine-to-machine communication. Although it is human-readable, it is not (easily) human-editable.
 
-Restrictions (compared to JSON):
+Compared to JSON, u8son format has some additional restrictions:
 
-1) Only string values, no numbers, null, etc.
+1) Only string type is allowed as basic type for values (no numbers, booleans or nulls).
 2) Strings (keys and values) shall not include NUL character (with code 0x00) 
 
-Structurally, the proposed format is similar to JSON, with the same set of delimetrs 
+Structurally, the proposed format is similar to JSON, with the same set of delimiters 
 
 {}[],:
 
 and the same meaning of those delimeters. 
 
-The differences are listed below.
+All the differences are summarised below.
 
 A) Only string values are allowed.
 
-B) Strings (keys and values) are represented in utf-8 as is, without quotation marks or escapes. All utf-8 code points are allowed in strings except of NULL symbol (0x00).
+B) Strings (keys and values) are represented in utf-8 as is, without quotation marks or escapes. All utf-8 code points are allowed in a string except of NULL symbol (0x00).
 
-C) Any space symbols outside strings (i.e spaces, tabs, newlines, etc, that may be inserted into JSON to improve readability) are prohibited.
+C) Any space symbols outside strings (i.e. spaces, tabs, newlines, etc, that may be inserted into JSON to improve readability) are prohibited.
 
 D) Each delimeter {}[],: is prefixed with NUL character (0x00). 
 
@@ -29,10 +29,17 @@ E) Empty string is represented  as NUL character, so two adjacent NUL characters
 Rationale.
 ----------
 
-Very simple processing, especially in C/C++ (all strings are already represented as null-terminated plain C/C++ strings) 
+Very simple processing, especially in C and C++ (all strings are already represented as null-terminated plain C strings) 
 
-NUL character is extremely rare used in strings (string with NUL character can not even be represented as plain C/C++ string) 
+NUL character extremely rare appears in real-world strings (moreover, it is very uncomfortable for strings in C language) 
 
-JSON non-string data types are (somewhat) useful only in javascript programs and, generally, are rather error-prone than helpful. So the restriction on value types (strings only) seems reasonable.
+JSON non-string basic data types are somewhat useful only in javascript programs but generally are rather error-prone than helpful, even in javascript. Indeed, 0 is falsy value, but string "0" is not, so accidentally misused type may cause bugs difficult to detect. For languages other than javascript JSON number type (IEEE 754 floating point) is quite unusual as most languagies distinguish between integer and real numbers. So the idea to restrict values to strings only seems reasonable and actually less ambiguous. After all, JSON is a text (not a binary) format so any interpretation of a text is always up to application. Weird javascript set of basic types actually just adds ambiguity instead of strictness.
 
+The parser.
+-----------
+The u8son parser represented in this repo is conceptually SAX-style, but without explicit callbacks, which are quite cumbersomely to implement in languagies without functional-style support (e.g. plain C). 
+
+u8son_parser_t parser object contains current parsing state that, in turn, contains a path (from the root) to the currently parsed item. Every item in the path is charaterised by type of the parsed item (object, array or string) and its parsing state: u8son_data (for string data) , u8son_enter_container, u8son_leave_container (for arrays or objects). 
+
+The main workhorse is u8son_next() method of u8son_parser_t object. The method changes the parser state by parsing subsequent item in the source. In other words, the new parsing state after u8son_next() call can be treated like next "SAX event", but the control flow is retained by the caller (in contrast with callback-based SAX-like parsers). See src/u8son_tests/u8son_test.c as an example of parser usage.
 
