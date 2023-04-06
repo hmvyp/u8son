@@ -4,17 +4,18 @@
 #include <stdlib.h>
 
 
-void printerror(u8son_parser_t* p){
+static inline void
+printerror(u8son_parser_t* p){
   printf("\n Pos: %d Error: %s %s", p->error.pos,  p->error.static_text,  p->error.var_text);
 }
 
 typedef struct test_t{
-  char* test_name;
-  char* input;
+  const char* test_name;
+  const char* input;
   int len;
 }test_t;
 
-char COMPLEX[] =
+const char COMPLEX[] =
     "\0{"
       "a\0:AAA\0,"
       "obj\0:\0{x\0:123\0}\0,"
@@ -25,9 +26,9 @@ char COMPLEX[] =
       "MyArrayWithEmptyString\0:\0[\0\0]"
     "\0}"; //
 
-char EMPTY_ARRAY[] = {"\0[\0]"};
-char EMPTY_OBJECT[] = {"\0{\0}"};
-char EMPTY_INPUT[] = {""};
+const char EMPTY_ARRAY[] = {"\0[\0]"};
+const char EMPTY_OBJECT[] = {"\0{\0}"};
+const char EMPTY_INPUT[] = {""};
 
 #define ONE_TEST(testname) {#testname, testname, sizeof(testname) - 1}
 
@@ -43,7 +44,7 @@ typedef struct strbuf_t {
   char s[32];
 }strbuf_t;
 
-static strbuf_t
+static inline strbuf_t
 int2strbuf(int k){
   strbuf_t buf = {0};
   sprintf(buf.s, "%d", k);
@@ -51,7 +52,7 @@ int2strbuf(int k){
 }
 
 
-static char*
+static inline const char*
 print_item_value(u8son_current_item_t* im, int last_in_the_path){
   if(im->type == u8son_string){
     return im->string_data;
@@ -73,8 +74,8 @@ print_item_value(u8son_current_item_t* im, int last_in_the_path){
 }
 
 
-int
-test_one(char* test_name, char* s, int len) {
+static inline int
+test_one(const char* test_name, const char* s, int len) {
   u8son_parser_t pa;
   u8son_init(&pa, s, len);
 
@@ -108,8 +109,8 @@ test_one(char* test_name, char* s, int len) {
 }
 
 
-int
-test_all(test_t* all_tests, int ntests){
+static inline int
+test_many(test_t* all_tests, int ntests){
   int i;
   int some_err = 0;
   for(i = 0; i< ntests; ++i){
@@ -134,9 +135,9 @@ test_all(test_t* all_tests, int ntests){
 }
 
 
-int
-main(){
-  return test_all(all_tests, sizeof(all_tests)/sizeof(all_tests[0]));
+static inline int
+test_all(){
+  return test_many(all_tests, sizeof(all_tests)/sizeof(all_tests[0]));
 }
 
 /*

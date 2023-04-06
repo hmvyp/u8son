@@ -29,7 +29,7 @@ typedef enum u8son_parse_event_type_t{
 
 
 typedef union u8son_key_t {
-    char* skey; // key for object field
+    const char* skey; // key for object field
     int nkey; // index for array element
 } u8son_key_t;
 
@@ -37,7 +37,7 @@ typedef struct u8son_current_item_t {
   u8son_key_t key; // string or number depending on parent_type
   u8son_type_t type; // string, object or array
   int cur_child_index;
-  char* string_data; // only for u8son_string type
+  const char* string_data; // only for u8son_string type
 
   u8son_parse_event_type_t parsing_status;
   void* user; // to associate the item with some user object
@@ -50,7 +50,7 @@ typedef struct u8son_path_t {
 
 typedef struct u8son_error_t {
   int pos; // in source
-  char* static_text;
+  const char* static_text;
   char var_text[u8son_MAX_DYN_ERROR];
 } u8son_error_t;
 
@@ -95,7 +95,7 @@ u8son_get_parent(u8son_parser_t* p){
 }
 
 
-static int u8son_reterror(u8son_parser_t* p, char* static_errstr, char* var_errstr){
+static int u8son_reterror(u8son_parser_t* p, const char* static_errstr, const char* var_errstr){
   p->error.static_text = static_errstr;
   if(strlen(var_errstr) < sizeof(p->error.var_text)){
     strcpy(p->error.var_text, var_errstr);
@@ -241,7 +241,7 @@ u8son_parse_next(u8son_parser_t* p){
 //............................................................... interface functions:
 
 static void
-u8son_init(u8son_parser_t* p, char* src, int src_limit){
+u8son_init(u8son_parser_t* p, const char* src, int src_limit){
   u8son_parser_t pa = {};
   u8son_tok_init( &pa.tok, src, src_limit);
   *p = pa;

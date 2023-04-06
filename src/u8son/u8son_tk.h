@@ -12,27 +12,27 @@ typedef enum u8son_tok_type_t{
 }u8son_tok_type_t;
 
 typedef struct u8son_tok_t{
-  char* alldata;
+  const char* alldata;
   int limit;
   int next_pos;
 
   u8son_tok_type_t toktype;
   char delim; // if toktype is delim
-  char* str; // if toktype is string
+  const char* str; // if toktype is string
 
-  char* static_errstring;
+  const char* static_errstring;
 
 }u8son_tok_t;
 
 
 static void
-u8son_tok_init(u8son_tok_t* tok,   char* alldata, int limit){
+u8son_tok_init(u8son_tok_t* tok,   const char* alldata, int limit){
   u8son_tok_t t = {alldata, limit};
   *tok = t;
 }
 
 static int
-u8son_tok_error(u8son_tok_t* tok, char* err){
+u8son_tok_error(u8son_tok_t* tok, const char* err){
   tok->toktype = u8son_tok_invalid;
   tok->static_errstring = err;
   return tok->toktype;
@@ -62,7 +62,7 @@ u8son_next_tok(u8son_tok_t* tok){
       tok->next_pos += 2;
     }
   }else{ // nonempty string case
-    char* s = tok->alldata + tok->next_pos;
+    const char* s = tok->alldata + tok->next_pos;
     if(memchr(s, 0, tok->limit - tok->next_pos) == NULL){ // try to find terminating 0
       return u8son_tok_error(tok, "String extends beyond the data buffer");
     }
