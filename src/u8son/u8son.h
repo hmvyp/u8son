@@ -240,7 +240,7 @@ u8son_parse_next(u8son_parser_t* p){
 
 //............................................................... interface functions:
 
-static void
+static inline void
 u8son_init(u8son_parser_t* p, const char* src, int src_limit){
   u8son_parser_t pa = {};
   u8son_tok_init( &pa.tok, src, src_limit);
@@ -248,7 +248,7 @@ u8son_init(u8son_parser_t* p, const char* src, int src_limit){
 
 }
 
-static int
+static inline int
 u8son_next(u8son_parser_t* p){
   if(p->current_level == 0 && u8son_get_current(p)->parsing_status == 0){
     // if first call, try to parse root object
